@@ -13,9 +13,14 @@
 
 #define UARTALARM SIGALRM
 
-pthread_t writethread, readthread;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+int uart_connected = 1;
+
+
+pthread_t writethread, readthread, watchdogthread;
 int breakloop = 0;
-char readbuffer[64];
+char readbuffer[40];
 int queueID;
 
 
@@ -41,8 +46,13 @@ int isQueueEmpty() {
 void* UART_write_thread(void *arg) {    
     while (1) {
 
+        pthread_mutex_lock(&lock);
+        while (uart_connected == 0) {
+            pthread_cond_wait(&cond, &lock);
+        }//de thread wacht tot de conditie waar is en de lock wordt vrijgegeven
+        pthread_mutex_unlock(&lock);
+
         if (isQueueEmpty(queueID)) {
-            usleep(2000000);//0.2 seconde
             continue;
         }
         
@@ -52,10 +62,9 @@ void* UART_write_thread(void *arg) {
             continue;
         }
 
-        printf("Received message: %s\n", msg.msg_text);
         UART_write(msg.msg_text);
 
-        usleep(2000000);//0.2 seconde
+        sleep(0.2);
     }
 }
 
@@ -68,10 +77,16 @@ void* UART_write_thread(void *arg) {
 
 void* UART_read_thread(void *arg) {
     while (1) {
-        usleep(2000000);//0.1 seconde
+
+        pthread_mutex_lock(&lock);
+        while (uart_connected == 0) {
+            pthread_cond_wait(&cond, &lock);
+        }//de thread wacht tot de conditie waar is en de lock wordt vrijgegeven
+        pthread_mutex_unlock(&lock);
+
+        sleep(0.2);
         if(UART_read(readbuffer, sizeof(readbuffer)) != 0)
         {
-            perror("Failed to read from UART");
             continue;
         }
         printf("Received message: %s\n", readbuffer);
@@ -85,26 +100,34 @@ void* UART_read_thread(void *arg) {
 ////////////////////////////////////////////////////////////////////////
 
 
-void watchdog_timer(int sig) {
-    if (sig == UARTALARM) {  
+void* watchdog_timer(void* arg) {
+    while (1) {
         if (UART_check_connection() != 0) {
-            perror("UART connection lost");
+            pthread_mutex_lock(&lock);//lock de mutex
+            uart_connected = 0;//zet de conditie op 0 voor de andere threads
+            pthread_mutex_unlock(&lock);//unlock de mutex
+
+            perror("UART connection lost, retrying...\n");
             UART_close();
             UART_open();
-            alarm(3);
             if (breakloop > 10)
             {
                 perror("UART connection lost, exiting program");
                 closeQueue(queueID);
-                exit(1);//exit the program
+                exit(1);
             }
             breakloop += 1;
-        }else
-        {
+        } else {
+            pthread_mutex_lock(&lock);//lock de mutex
+            uart_connected = 1;//zet de conditie op 1 voor de andere threads
+            pthread_cond_broadcast(&cond);//broadcast de conditie naar de andere threads
+            pthread_mutex_unlock(&lock);//unlock de mutex
+
             breakloop = 0;
-            alarm(5);  // Reset the timer
-            printf("UART connection is still active\n");
+            printf("UART connection is still alive\n");
         }
+
+        sleep(8);
     }
 }
 
@@ -124,44 +147,41 @@ int main() {
     }
     else
     {
-        signal(UARTALARM, watchdog_timer);
-        alarm(5);
+        
+        int try = 0;
+        do {
+            try++;
+            uart_connected = UART_open();
+            if (uart_connected != 0) {
+                sleep(4);
+            }
+        } while (try < 11 && uart_connected != 0);
+        if (uart_connected != 0) {
+            perror("Failed to open UART, exiting program");
+            closeQueue(queueID);
+            return 1;
+        }
+
 
         printf("Message queue created with ID: %d\n", queueID);
 
-        int* queueIDPtr = malloc(sizeof(int));
-        *queueIDPtr = queueID;
-
-        int uartOpenResult;
-        int attempts = 0;
-        do {
-            uartOpenResult = UART_open();
-            if (uartOpenResult != 0) {
-                perror("Failed to open UART, retrying...");
-                sleep(1);  // Wait for 1 second before retrying
-            }
-            attempts++;
-        } while (uartOpenResult != 0 && attempts < 10);
-
-        if (uartOpenResult != 0) {
-            perror("Failed to open UART after 10 attempts");
+        if (pthread_create(&watchdogthread, NULL, watchdog_timer, NULL) != 0) {
+            perror("Failed to create watchdog timer thread");
             return 1;
-        }
-        else
-        {
-            printf("UART opened\n");
-              if (pthread_create(&writethread, NULL, UART_write_thread, queueIDPtr) != 0) {
+        }   
+        if (pthread_create(&writethread, NULL, UART_write_thread, NULL) != 0) {
             perror("Failed to create UART write thread");
             return 1;
-            }
-            if (pthread_create(&readthread, NULL, UART_read_thread, NULL) != 0) {
-                perror("Failed to create UART read thread");
-                return 1;
-            }
-
-            pthread_join(writethread, NULL);
-            pthread_join(readthread, NULL);
         }
+        if (pthread_create(&readthread, NULL, UART_read_thread, NULL) != 0) {
+            perror("Failed to create UART read thread");
+            return 1;
+        }
+
+        pthread_join(writethread, NULL);
+        pthread_join(readthread, NULL);
+        pthread_join(watchdogthread, NULL);
+    
     }    
 
     closeQueue(queueID);

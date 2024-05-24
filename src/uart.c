@@ -21,9 +21,6 @@ int UART_open(void)
         return 1;
     }
 
-    printf("Serial port opened\n");
-
-
     //cflag bepaald de flow control, data bits, stop bits, en parity bits
     tty.c_cflag &= ~PARENB; // Clear parity bit, disabling parity (most common)
     tty.c_cflag &= ~CSTOPB; // Clear stop field, only one stop bit used in communication (most common)
@@ -60,13 +57,14 @@ int UART_open(void)
         return 1;
     }
 
+    printf("Serial port opened\n");
     return 0;
 }
 
 
 void UART_write(unsigned char *msg)
 {
-    printf("Sending: %s\n", msg);
+    printf("Sending: %s", msg);
     write(serial_port, msg, strlen(msg));
 }
 
@@ -78,17 +76,17 @@ int UART_read(char *buf, size_t bufsize)
     }
     return -1;
 }
-void UART_close(void)
-{
-    printf("Closing serial port\n");
-    close(serial_port);
-}
 
 int UART_check_connection(void)
 {
-    char test_msg[] = "alive";
+    char test_msg[] = "\0\0\n";
     if (write(serial_port, test_msg, strlen(test_msg)) < 0) {
         return -1;
     }
     return 0;
+}
+
+void UART_close(void)
+{
+    close(serial_port);
 }

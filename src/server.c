@@ -51,7 +51,7 @@ int handle_client(int new_socket, int queueID) {
 
     while ((read_size = read(new_socket, buffer, sizeof(buffer) - 1)) > 0) {
         buffer[read_size] = '\0';
-        printf("Received message: %s\n", buffer);
+        printf("Received message: %s", buffer);
         struct message msg;
         msg.msg_type = 1;
         strcpy(msg.msg_text, buffer);
@@ -59,7 +59,7 @@ int handle_client(int new_socket, int queueID) {
             fprintf(stderr, "Error from msgsnd: %s\n", strerror(errno));
             return -1;
         }
-        printf("Message sent to queue\n");
+        printf("Message sent to queue %s\n", buffer);
     }
 
     printf("Connection closed\n");
