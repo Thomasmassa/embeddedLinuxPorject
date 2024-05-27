@@ -19,7 +19,7 @@ $(ODIR)/%.o: $(SDIR)/%.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 all: bin/uart bin/server
-	echo "Done"
+	echo "Done making"
 
 bin/uart: $(OBJ1)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)

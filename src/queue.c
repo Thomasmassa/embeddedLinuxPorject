@@ -1,9 +1,8 @@
 #include "../include/queue.h"
 
 #define key_zin "../src/queue.c"
-#define key_id 65
 
-int createQueue()
+int createQueue(int key_id)
 {
     key_t key = ftok(key_zin, key_id);
     if (key == -1)
@@ -21,7 +20,7 @@ int createQueue()
     return queueID;
 }
 
-int openQueue()
+int openQueue(int key_id)
 {
     key_t key = ftok(key_zin, key_id);
     if (key == -1)

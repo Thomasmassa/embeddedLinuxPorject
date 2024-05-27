@@ -64,8 +64,10 @@ int UART_open(void)
 
 void UART_write(unsigned char *msg)
 {
-    printf("Sending: %s", msg);
+
+    printf("Sending: %s\n", msg);
     write(serial_port, msg, strlen(msg));
+    write(serial_port, "\r\n", 1);
 }
 
 int UART_read(char *buf, size_t bufsize)
@@ -79,7 +81,7 @@ int UART_read(char *buf, size_t bufsize)
 
 int UART_check_connection(void)
 {
-    char test_msg[] = "\0\0\n";
+    char test_msg[] = "\0\r\n";
     if (write(serial_port, test_msg, strlen(test_msg)) < 0) {
         return -1;
     }

@@ -7,6 +7,8 @@
 #include <stdio.h>     // Voor fprintf(), perror()
 #include <string.h>    // Voor strerror()
 #include <errno.h>     // Voor errno
+#include <unistd.h>    // Voor sleep()
+
 
 int createQueue();
 int openQueue();

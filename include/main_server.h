@@ -6,7 +6,9 @@
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
+#include <unistd.h>
 
+int isQueueEmpty();
 int send_buffer(char* buffer);
 
 #endif  
