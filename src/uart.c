@@ -64,7 +64,6 @@ int UART_open(void)
 
 void UART_write(unsigned char *msg)
 {
-
     printf("Sending: %s\n", msg);
     write(serial_port, msg, strlen(msg));
     write(serial_port, "\r\n", 1);

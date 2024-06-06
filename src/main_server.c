@@ -9,33 +9,14 @@ int client_sockets[10];
 int client_count = 0;
 
 
-int isQueueEmpty(int queueID2) {
-    struct msqid_ds stats;
-    if (msgctl(queueID2, IPC_STAT, &stats) == -1) {
-        perror("msgctl failed");
-        return -1;
-    }
-    return stats.msg_qnum == 0;
-}
-
-
-////////////////////////////////////////////////////////////////////////
-
-
-////////////////////////////////////////////////////////////////////////
-
 
 void* Tcp_Send_Thread(void *arg) {
     int queueID2 = *((int*)arg);
     while (1) {
-        if (isQueueEmpty(queueID2))
-        {
-            continue;
-        }
         struct message msg;
-        if (msgrcv(queueID2, &msg, sizeof(msg), 0, 0) == -1) {
+        if (msgrcv(queueID2, &msg, sizeof(msg), 2, 0) == -1) {
             fprintf(stderr, "Error from msgrcv: %s\n", strerror(errno));
-            return NULL;
+            continue;
         }
         printf("Message received from queue: %s", msg.msg_text);
     
@@ -78,7 +59,7 @@ void handle_client(int socket, int queueID)
 
     while (1) {
         memset(buffer, 0, sizeof(buffer));  // Initialiseer de buffer met nullen
-        read_size = read(socket, buffer, sizeof(buffer) - 1);
+        read_size = read(socket, buffer, sizeof(buffer) - 1);//lees de input van de client
         if (read_size <= 0)
             break;
 
@@ -151,7 +132,7 @@ int main() {
     printf("Start Program\n");
 
     // QUEUE 1
-    int queueID1 = createQueue(65);//key 65 queue server -> uart
+    int queueID1 = createQueue(65);
     if (queueID1 == -1) {
         perror("Failed to create message queue");
         return 1;
@@ -164,34 +145,22 @@ int main() {
         return 1;
     }//Server opzetten
 
-    // QUEUE 2
-    int queueID2 = openQueue(66);//key 66 queue uart -> server
-    if (queueID2 == -1) {
-        perror("Failed to open message queue");
-        return 1;
-    }
-    printf("Message queue opened with ID: %d\n", queueID2);
-    // QUEUE 2
-
-    // THREADS 
+    //aanmaken van een pointer naar de queueID1
     int *pQueueID1 = malloc(sizeof(int));
     if (pQueueID1 == NULL) {
         perror("Failed to allocate memory");
         return 1;
     }
     *pQueueID1 = queueID1;
+
+    // THREADS 
+    ///////////////////////////////////////////////
     if (pthread_create(&listen_thread, NULL, Tcp_Listen_Thread, pQueueID1) != 0) {
         perror("Failed to create listen thread");
         return 1;
     }
-    // //////////////////////////////////////////
-    int *pQueueID2 = malloc(sizeof(int));
-    if (pQueueID2 == NULL) {
-        perror("Failed to allocate memory");
-        return 1;
-    }
-    *pQueueID2 = queueID2;
-    if (pthread_create(&send_thread, NULL, Tcp_Send_Thread, pQueueID2) != 0) {
+    ///////////////////////////////////////////////
+    if (pthread_create(&send_thread, NULL, Tcp_Send_Thread, pQueueID1) != 0) {
         perror("Failed to create send thread");
         return 1;
     }
@@ -201,9 +170,7 @@ int main() {
     pthread_join(listen_thread, NULL);
     pthread_join(send_thread, NULL);
 
-
     closeQueue(queueID1);
-    closeQueue(queueID2);
     tcp_server_close();
     return 0;
 }
