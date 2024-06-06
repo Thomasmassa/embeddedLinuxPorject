@@ -22,7 +22,6 @@ pthread_t writethread, readthread;
 int breakloop = 0;
 char readbuffer[60];
 int queueID1;
-int queueID2;
 
 
 
@@ -70,7 +69,7 @@ void* UART_read_thread(void *arg) {
         struct message msg;
         msg.msg_type = 2;
         strcpy(msg.msg_text, readbuffer);
-        if (msgsnd(queueID2, &msg, sizeof(msg), 0) == -1) {
+        if (msgsnd(QueueID1, &msg, sizeof(msg), 0) == -1) {
             fprintf(stderr, "Error from msgsnd: %s\n", strerror(errno));
             continue;
         }
