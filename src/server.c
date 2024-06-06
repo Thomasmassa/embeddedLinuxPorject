@@ -54,9 +54,11 @@ int tcp_server_setup()
 
 int tcp_server_listen(int queueID) 
 {
+    printf("Listening for connections\n");
     int new_socket;
     if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
         perror("accept");
+        printf("Error accepting connection\n");
         return -1;
     }
     printf("Connection accepted (socket: %d)\n", new_socket);
@@ -74,7 +76,7 @@ void tcp_server_send(unsigned char *msg, int client_sockets[], int client_count)
     for (int i = 0; i < client_count; i++) {
         printf("sending message to (%d): %s",client_sockets[i] , msg);
         write(client_sockets[i], msg, strlen(msg));
-        write(client_sockets[i], "\n", 1);
+        write(client_sockets[i], "\r", 1);
     }
 }
 

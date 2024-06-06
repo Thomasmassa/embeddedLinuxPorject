@@ -3,25 +3,32 @@
 #include "../include/server.h"
 #include "../include/queue.h"
 
-pthread_t send_thread, listen_thread;
+
+pthread_t send_thread, listen_thread, remove_socket_thread;
 
 int client_sockets[10];
 int client_count = 0;
 
+int queueID1;
+
+#include <sys/msg.h>
+
+#define MAX_QUEUE_SIZE 100
+
 
 
 void* Tcp_Send_Thread(void *arg) {
-    int queueID2 = *((int*)arg);
     while (1) {
         struct message msg;
-        if (msgrcv(queueID2, &msg, sizeof(msg), 2, 0) == -1) {
+        if (msgrcv(queueID1, &msg, sizeof(msg), 2, 0) == -1) {
             fprintf(stderr, "Error from msgrcv: %s\n", strerror(errno));
-            continue;
+            exit(0);
         }
         printf("Message received from queue: %s", msg.msg_text);
     
         tcp_server_send(msg.msg_text, client_sockets, client_count);
     }
+    return NULL;
 }
 
 
@@ -30,19 +37,33 @@ void* Tcp_Send_Thread(void *arg) {
 ////////////////////////////////////////////////////////////////////////
 
 
-void remove_socket(int socket_to_remove) {
-    int i;
-    for (i = 0; i < client_count; i++) {
-        if (client_sockets[i] == socket_to_remove) {
-            break;
+void* remove_socket(void *arg) {
+    int socket_to_remove;
+    while(1)
+    {
+        usleep(100000);
+        struct message msg;
+        if (msgrcv(queueID1, &msg, sizeof(msg), 3, 0) == -1) {
+            fprintf(stderr, "Error from msgrcv: %s\n", strerror(errno));
+            exit(0);
         }
-    }
+        socket_to_remove = atoi(msg.msg_text);
 
-    if (i < client_count) {
-        for (int j = i; j < client_count - 1; j++) {
-            client_sockets[j] = client_sockets[j + 1];
+        int i;
+        printf("Removing socket %d\n", socket_to_remove);
+        for (i = 0; i < client_count; i++) {
+            if (client_sockets[i] == socket_to_remove) {
+                break;
+            }
         }
-        (client_count)--;
+
+        if (i < client_count) {
+            for (int j = i; j < client_count - 1; j++) {
+                client_sockets[j] = client_sockets[j + 1];
+            }
+            (client_count)--;
+            printf("Socket removed, socket count: %d\n", client_count);
+        }
     }
 }
 
@@ -90,14 +111,19 @@ void handle_client(int socket, int queueID)
         printf("Message sent to queue %s\n", buffer);
     }
 
-    remove_socket(socket);
     printf("Connection closed\n");
     close(socket);
+
+    struct message msg;
+    msg.msg_type = 3;
+    sprintf(msg.msg_text, "%d", socket);
+    if (msgsnd(queueID, &msg, sizeof(msg), 0) == -1) {
+        fprintf(stderr, "Error from msgsnd: %s\n", strerror(errno));
+    }
 }
 
 
 void* Tcp_Listen_Thread(void *arg) {
-    int queueID1 = *((int*)arg);
     while (1) {
         int new_socket = tcp_server_listen(queueID1);
 
@@ -109,6 +135,8 @@ void* Tcp_Listen_Thread(void *arg) {
         client_sockets[client_count] = new_socket;
         client_count++;
 
+        printf("socket count: %d)\n", client_count);
+
         pid_t pid = fork();
         if (pid < 0) {
             perror("Failed to fork");
@@ -118,57 +146,55 @@ void* Tcp_Listen_Thread(void *arg) {
             //kindproces
             handle_client(new_socket, queueID1);
             exit(0);
-        } else {
-            //ouderproces
-            close(new_socket);
-        }   
+        } 
     }
 }
 
-
+void handle_sigint(int sig) {
+    closeQueue(queueID1);
+    tcp_server_close();
+    exit(0);
+}
 
 int main() {
     TerminalClear();
-    printf("Start Program\n");
+    signal(SIGINT, handle_sigint);
+    closeQueue(65);
 
-    // QUEUE 1
-    int queueID1 = createQueue(65);
+    queueID1 = createQueue(65);
     if (queueID1 == -1) {
         perror("Failed to create message queue");
         return 1;
-    }
-    printf("Message queue created with ID: %d\n", queueID1);
-    // QUEUE 1
+    }printf("Message queue created with ID: %d\n", queueID1);
 
     if (tcp_server_setup() == -1) {
         perror("Failed to setup TCP server");
         return 1;
     }//Server opzetten
 
-    //aanmaken van een pointer naar de queueID1
-    int *pQueueID1 = malloc(sizeof(int));
-    if (pQueueID1 == NULL) {
-        perror("Failed to allocate memory");
-        return 1;
-    }
-    *pQueueID1 = queueID1;
-
     // THREADS 
     ///////////////////////////////////////////////
-    if (pthread_create(&listen_thread, NULL, Tcp_Listen_Thread, pQueueID1) != 0) {
+    if (pthread_create(&listen_thread, NULL, Tcp_Listen_Thread, NULL) != 0) {
         perror("Failed to create listen thread");
         return 1;
     }
-    ///////////////////////////////////////////////
-    if (pthread_create(&send_thread, NULL, Tcp_Send_Thread, pQueueID1) != 0) {
+
+    if (pthread_create(&send_thread, NULL, Tcp_Send_Thread, NULL) != 0) {
         perror("Failed to create send thread");
+        return 1;
+    }
+
+    if (pthread_create(&remove_socket_thread, NULL, remove_socket, NULL) != 0) {
+        perror("Failed to create remove socket thread");
         return 1;
     }
     // THREADS
 
-
-    pthread_join(listen_thread, NULL);
     pthread_join(send_thread, NULL);
+    printf("Send thread joined\n");
+
+    pthread_join(remove_socket_thread, NULL);
+    pthread_join(listen_thread, NULL);
 
     closeQueue(queueID1);
     tcp_server_close();

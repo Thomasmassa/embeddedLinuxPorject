@@ -7,8 +7,15 @@
 #include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
+#include <signal.h>
 
-int isQueueEmpty();
-int send_buffer(char* buffer);
+
+void handle_signal(int signal);
+void* Tcp_Send_Thread(void *arg);
+void* Tcp_Listen_Thread(void *arg);
+void handle_client(int socket, int queueID);
+void* remove_socket(void *arg);
+
+
 
 #endif  

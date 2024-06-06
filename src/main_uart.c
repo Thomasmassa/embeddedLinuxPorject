@@ -24,6 +24,16 @@ char readbuffer[60];
 int queueID1;
 
 
+void closeAll() {
+    breakloop = 21;
+    pthread_cancel(writethread);
+    pthread_cancel(readthread);
+    pthread_cond_destroy(&cond);
+    pthread_mutex_destroy(&lock);
+    UART_close();
+    exit(0);
+}
+
 
 void* UART_write_thread(void *arg) {    
     while (1) {
@@ -37,6 +47,7 @@ void* UART_write_thread(void *arg) {
         struct message msg;
         if (msgrcv(queueID1, &msg, sizeof(msg), 1, 0) == -1) {
             fprintf(stderr, "Error from msgrcv: %s\n", strerror(errno));
+            closeAll();
             continue;
         }
 
@@ -46,7 +57,6 @@ void* UART_write_thread(void *arg) {
 
 
 ////////////////////////////////////////////////////////////////////////
-
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -69,17 +79,16 @@ void* UART_read_thread(void *arg) {
         struct message msg;
         msg.msg_type = 2;
         strcpy(msg.msg_text, readbuffer);
-        if (msgsnd(QueueID1, &msg, sizeof(msg), 0) == -1) {
+        if (msgsnd(queueID1, &msg, sizeof(msg), 0) == -1) {
             fprintf(stderr, "Error from msgsnd: %s\n", strerror(errno));
+            closeAll();
             continue;
         }
-        printf("Message sent to queue %s", readbuffer);
     }
 }
 
 
 ////////////////////////////////////////////////////////////////////////
-
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -98,8 +107,8 @@ void watchdog_timer() {
         }
         if (breakloop >= 21)
         {
-            perror("UART connection lost, exiting program");
-            closeQueue(queueID1);
+            perror("UART connection lost, exiting program");    
+            closeAll();
         }
         breakloop += 1;
     } else {
@@ -125,18 +134,6 @@ int startThreads() {
         return 1;
     }
     return 0;
-}
-
-
-void closeAll(int sig) {
-    breakloop = 21;
-    pthread_cancel(writethread);
-    pthread_cancel(readthread);
-    pthread_cond_destroy(&cond);
-    pthread_mutex_destroy(&lock);
-    closeQueue(queueID1);
-    UART_close();
-    exit(0);
 }
 
 
